@@ -7,6 +7,7 @@ import morgan from 'morgan'
 import compression from 'compression'
 import rateLimit from 'express-rate-limit'
 import path from 'path'
+import fs from 'fs'
 
 import authRoutes from './routes/auth.routes'
 import campRoutes from './routes/camp.routes'
@@ -38,8 +39,24 @@ app.set('trust proxy', 1)
 
 // ─── Sécurité ────────────────────────────────────────────────
 app.use(helmet())
+
+// FRONTEND_URL accepte une liste séparée par des virgules (prod + previews).
+// Les sous-domaines *.vercel.app sont aussi acceptés : les URLs de preview
+// Vercel changent à chaque déploiement et ne peuvent pas être toutes listées
+// à l'avance. L'auth se fait par Bearer token (pas de cookies), donc un
+// site tiers hébergé sur vercel.app ne peut pas accéder aux données d'un
+// utilisateur sans déjà avoir son token.
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',').map(o => o.trim()).filter(Boolean)
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true)
+    try {
+      if (new URL(origin).hostname.endsWith('.vercel.app')) return callback(null, true)
+    } catch { /* origin invalide → refusé ci-dessous */ }
+    callback(new Error('Origin non autorisée'))
+  },
   credentials: true,
 }))
 
@@ -65,9 +82,11 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
 // ─── Fichiers uploadés ───────────────────────────────────────
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')))
 
-// ─── Frontend statique (production) — avant les routes API ───
+// ─── Frontend statique (production Railway : build copié dans public/) ─
+// Absent sur Vercel, où le frontend est déployé comme projet séparé.
 const publicDir = path.join(__dirname, '..', 'public')
-if (process.env.NODE_ENV === 'production') {
+const hasPublicBuild = fs.existsSync(path.join(publicDir, 'index.html'))
+if (process.env.NODE_ENV === 'production' && hasPublicBuild) {
   app.use(express.static(publicDir))
 }
 
@@ -103,20 +122,26 @@ app.use('/api', ecoleRoutes)
 app.use('/api', notFound)
 app.use(errorHandler)
 
-// ─── SPA fallback (production) ───────────────────────────────
-if (process.env.NODE_ENV === 'production') {
+// ─── SPA fallback (production Railway uniquement) ─────────────
+if (process.env.NODE_ENV === 'production' && hasPublicBuild) {
   app.get('*', (_req, res) => {
     res.sendFile(path.join(publicDir, 'index.html'))
   })
 }
 
 // ─── Démarrage ───────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`\n🏕️  Camp Manager API`)
-  console.log(`   Environnement : ${process.env.NODE_ENV || 'development'}`)
-  console.log(`   URL           : http://localhost:${PORT}`)
-  console.log(`   Health        : http://localhost:${PORT}/health\n`)
-  initAdmin()
-})
+// Idempotent : ne crée l'admin que si la base est vide.
+initAdmin()
+
+// Sur Vercel, la fonction serverless importe `app` sans jamais l'écouter
+// sur un port — c'est Vercel qui reçoit la requête HTTP et l'y transmet.
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`\n🏕️  Camp Manager API`)
+    console.log(`   Environnement : ${process.env.NODE_ENV || 'development'}`)
+    console.log(`   URL           : http://localhost:${PORT}`)
+    console.log(`   Health        : http://localhost:${PORT}/health\n`)
+  })
+}
 
 export default app
