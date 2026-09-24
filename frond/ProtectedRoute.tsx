@@ -42,3 +42,8 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
 
   return <>{children}</>
 }
+
+export function SuperAdminRoute({ children }: { children: ReactNode }) {
+  const user = useAuthStore(s => s.user)
+  return user?.role === 'SUPER_ADMIN' ? <>{children}</> : <Navigate to="/" replace />
+}

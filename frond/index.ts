@@ -7,6 +7,10 @@ export interface User {
   email: string
   role: Role
   avatarUrl?: string
+  campId?: string | null
+  permissions?: string[]
+  campType?: 'CAMP' | 'ECOLE' | null
+  campNom?: string | null
   dernierLogin?: string
   createdAt: string
 }

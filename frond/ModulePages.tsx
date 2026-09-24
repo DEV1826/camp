@@ -59,6 +59,66 @@ const emptyCamp = {
   prixBase: 75000,
 }
 
+export const MODULE_LABELS: Record<string, string> = {
+  participants: 'Participants', medical: 'Médical', groupes: 'Groupes', animateurs: 'Animateurs',
+  planning: 'Planning', caisse: 'Caisse', documents: 'Documents', messages: 'Messages',
+  statistiques: 'Statistiques', presence: 'Présence / Sorties', visiteurs: 'Visiteurs', dons: 'Dons',
+  rapport: 'Rapport journalier', enseignements: 'Enseignements', causeries: 'Causeries groupes',
+}
+
+export const MODULE_LABELS_ECOLE: Record<string, string> = {
+  eleves: 'Élèves', sante_ecole: 'Médical', groupes_ecole: 'Groupes', enseignants: 'Enseignants',
+  emploi_temps: 'Emploi du temps', frais: 'Frais de scolarité', documents_eleves: 'Documents',
+  messages_ecole: 'Messages', statistiques_ecole: 'Statistiques', sorties_eleves: 'Sorties des élèves',
+  visiteurs_ecole: 'Visiteurs', dons_ecole: 'Dons', rapport_ecole: 'Rapport journalier',
+  lecons: 'Leçons', causeries_ecole: 'Causeries des groupes',
+  classes: 'Classes', evaluations: 'Évaluations (couleurs)', programme_ecole: 'Programme', presences_eleves: 'Appel des élèves',
+}
+
+export const CHAMPS_ELEVE_LABELS: Record<string, string> = {
+  sexe: 'Sexe', dateNaissance: 'Date de naissance', lieuNaissance: 'Lieu de naissance',
+  parent: 'Nom et prénom du parent', telephoneParent: 'Téléphone du parent', adresse: 'Adresse',
+  infosMedicales: 'Infos médicales', classe: 'Classe', groupes: 'Groupes', notes: 'Notes',
+}
+export const CHAMPS_ELEVE_DEFAUT = ['sexe', 'dateNaissance', 'lieuNaissance', 'parent', 'telephoneParent', 'classe', 'groupes', 'notes']
+
+export function ChampsPicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const toggle = (c: string) => onChange(value.includes(c) ? value.filter(x => x !== c) : [...value, c])
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      {Object.entries(CHAMPS_ELEVE_LABELS).map(([c, label]) => (
+        <label key={c} className="flex items-center gap-2 text-sm text-ink-2 cursor-pointer">
+          <input type="checkbox" checked={value.includes(c)} onChange={() => toggle(c)} />
+          {label}
+        </label>
+      ))}
+    </div>
+  )
+}
+
+export const labelsFor = (type?: string) => (type === 'ECOLE' ? MODULE_LABELS_ECOLE : MODULE_LABELS)
+
+export function PermissionsPicker({ value, onChange, type }: { value: string[]; onChange: (v: string[]) => void; type?: string }) {
+  const labels = labelsFor(type)
+  const toggle = (m: string) => onChange(value.includes(m) ? value.filter(x => x !== m) : [...value, m])
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      {Object.entries(labels).map(([m, label]) => (
+        <label key={m} className="flex items-center gap-2 text-sm text-ink-2 cursor-pointer">
+          <input type="checkbox" checked={value.includes(m)} onChange={() => toggle(m)} />
+          {label}
+        </label>
+      ))}
+      <button type="button" className="text-xs text-sage text-left" onClick={() => onChange(value.length === Object.keys(labels).length ? [] : Object.keys(labels))}>
+        Tout cocher / décocher
+      </button>
+    </div>
+  )
+}
+
+const emptyAdmin = { nom: '', prenom: '', email: '', motDePasse: '', permissions: Object.keys(MODULE_LABELS) }
+
+
 function getErrorMessage(err: unknown) {
   if (typeof err === 'object' && err && 'response' in err) {
     const response = (err as { response?: { data?: { message?: string } } }).response
@@ -132,6 +192,10 @@ function useParticipants(campId: string) {
 export function CampFormPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState(emptyCamp)
+  const [admin, setAdmin] = useState(emptyAdmin)
+  const [type, setType] = useState<'CAMP' | 'ECOLE'>('CAMP')
+  const [champs, setChamps] = useState<string[]>(CHAMPS_ELEVE_DEFAUT)
+  const changeType = (t: 'CAMP' | 'ECOLE') => { setType(t); setAdmin(a => ({ ...a, permissions: Object.keys(labelsFor(t)) })) }
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -140,7 +204,7 @@ export function CampFormPage() {
     setError('')
     setSaving(true)
     try {
-      await api.post('/camps', form)
+      await api.post('/camps', { ...form, type, admin, ...(type === 'ECOLE' && { champsEleve: champs }) })
       navigate('/camps')
     } catch (err) {
       setError(getErrorMessage(err))
@@ -154,27 +218,35 @@ export function CampFormPage() {
       <Link to="/camps" className="inline-flex items-center gap-2 text-sm text-ink-3 hover:text-ink">
         <ArrowLeft size={15} /> Retour aux camps
       </Link>
-      <PageHeader title="Nouveau camp" subtitle="Créer une session et ouvrir les inscriptions." />
+      <PageHeader title={type === 'ECOLE' ? 'Nouvelle école' : 'Nouveau camp'} subtitle="Créer un espace avec son administrateur." />
 
       <form onSubmit={submit} className="card space-y-4">
         {error && <div className="rounded-xl border border-ember/20 bg-ember/10 px-3 py-2 text-sm text-ember">{error}</div>}
+        <Field label="Type d'espace">
+          <div className="flex gap-2">
+            {([['CAMP', 'Camp'], ['ECOLE', 'École maternelle']] as const).map(([v, l]) => (
+              <button type="button" key={v} onClick={() => changeType(v)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium border ${type === v ? 'bg-sage/12 text-sage border-sage/20' : 'text-ink-2 border-border'}`}>{l}</button>
+            ))}
+          </div>
+        </Field>
         <div className="grid sm:grid-cols-2 gap-4">
-          <Field label="Nom du camp">
+          <Field label={type === 'ECOLE' ? "Nom de l'école" : 'Nom du camp'}>
             <input className="input-field" required value={form.nom} onChange={e => setForm({ ...form, nom: e.target.value })} />
           </Field>
           <Field label="Lieu">
             <input className="input-field" required value={form.lieu} onChange={e => setForm({ ...form, lieu: e.target.value })} />
           </Field>
-          <Field label="Date début">
+          <Field label={type === 'ECOLE' ? 'Début année scolaire' : 'Date début'}>
             <input type="date" className="input-field" required value={form.dateDebut} onChange={e => setForm({ ...form, dateDebut: e.target.value })} />
           </Field>
-          <Field label="Date fin">
+          <Field label={type === 'ECOLE' ? 'Fin année scolaire' : 'Date fin'}>
             <input type="date" className="input-field" required value={form.dateFin} onChange={e => setForm({ ...form, dateFin: e.target.value })} />
           </Field>
-          <Field label="Capacité">
+          <Field label={type === 'ECOLE' ? 'Effectif maximum' : 'Capacité'}>
             <input type="number" min={1} className="input-field" required value={form.capaciteMax} onChange={e => setForm({ ...form, capaciteMax: Number(e.target.value) })} />
           </Field>
-          <Field label="Prix de base">
+          <Field label={type === 'ECOLE' ? 'Frais de scolarité annuels par élève (FCFA)' : 'Prix de base'}>
             <input type="number" min={0} className="input-field" required value={form.prixBase} onChange={e => setForm({ ...form, prixBase: Number(e.target.value) })} />
           </Field>
         </div>
@@ -184,6 +256,31 @@ export function CampFormPage() {
         <Field label="Description">
           <textarea className="input-field min-h-24" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
         </Field>
+        <div className="border-t border-border pt-4 space-y-4">
+          <h3 className="font-display font-700 text-ink">Administrateur du camp</h3>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Field label="Prénom">
+              <input className="input-field" required value={admin.prenom} onChange={e => setAdmin({ ...admin, prenom: e.target.value })} />
+            </Field>
+            <Field label="Nom">
+              <input className="input-field" required value={admin.nom} onChange={e => setAdmin({ ...admin, nom: e.target.value })} />
+            </Field>
+            <Field label="Email (identifiant de connexion)">
+              <input type="email" className="input-field" required value={admin.email} onChange={e => setAdmin({ ...admin, email: e.target.value })} />
+            </Field>
+            <Field label="Mot de passe (8 caractères min.)">
+              <input type="password" minLength={8} className="input-field" required value={admin.motDePasse} onChange={e => setAdmin({ ...admin, motDePasse: e.target.value })} />
+            </Field>
+          </div>
+          {type === 'ECOLE' && (
+            <Field label="Champs de la fiche élève (nom et prénom toujours présents)">
+              <ChampsPicker value={champs} onChange={setChamps} />
+            </Field>
+          )}
+          <Field label="Autorisations (modules accessibles)">
+            <PermissionsPicker type={type} value={admin.permissions} onChange={permissions => setAdmin({ ...admin, permissions })} />
+          </Field>
+        </div>
         <button disabled={saving} className="btn-primary inline-flex items-center gap-2">
           <Save size={16} /> {saving ? 'Création...' : 'Créer le camp'}
         </button>

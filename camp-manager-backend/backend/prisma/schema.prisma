@@ -92,6 +92,25 @@ enum RelationParent {
   AUTRE
 }
 
+enum TypeEspace {
+  CAMP
+  ECOLE
+}
+
+enum CouleurEval {
+  VERT
+  JAUNE
+  ORANGE
+  ROUGE
+}
+
+enum TypeProgramme {
+  MENSUEL
+  HEBDOMADAIRE
+  MATIN
+  RYTHME_DE_VIE
+}
+
 enum TypePresence {
   ANIMATEUR
   ENFANT
@@ -110,14 +129,18 @@ model User {
   role             Role      @default(PARENT)
   avatarUrl        String?   @map("avatar_url")
   actif            Boolean   @default(true)
+  campId           String?   @map("camp_id")
+  permissions      String[]  @default([])
   dernierLogin     DateTime? @map("dernier_login")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
   // Relations
+  camp             Camp?          @relation(fields: [campId], references: [id], onDelete: SetNull)
   messagesEnvoyes  Message[]      @relation("expediteur")
   notifications    Notification[]
 
+  @@index([campId])
   @@map("users")
 }
 
@@ -135,6 +158,7 @@ model Camp {
   dateFin      DateTime   @map("date_fin")
   capaciteMax  Int        @map("capacite_max")
   prixBase     Decimal    @default(0) @map("prix_base") @db.Decimal(10, 2)
+  type         TypeEspace @default(CAMP)
   statut       StatutCamp @default(BROUILLON)
   imageUrl     String?    @map("image_url")
   createdAt    DateTime   @default(now()) @map("created_at")
@@ -155,6 +179,23 @@ model Camp {
   paroisses       CampParoisse[]
   enseignements   Enseignement[]
   causeries       CauserieGroupe[]
+  users           User[]
+  champsEleve     String[]   @default(["sexe", "dateNaissance", "lieuNaissance", "parent", "telephoneParent", "classe", "groupes", "notes"]) @map("champs_eleve")
+  eleves          Eleve[]
+  classes         Classe[]
+  groupesEcole    GroupeEcole[]
+  competences     Competence[]
+  programmes      ProgrammeEcole[]
+  enseignants     Enseignant[]
+  activitesEcole  ActiviteEcole[]
+  depensesEcole   DepenseEcole[]
+  messagesEcole   MessageEcole[]
+  sortiesEleves   SortieEleve[]
+  visiteursEcole  VisiteurEcole[]
+  donsEcole       DonEcole[]
+  rapportsJour    RapportJour[]
+  lecons          LeconEcole[]
+  causeriesEcole  CauserieEcole[]
 
   @@map("camps")
 }
@@ -614,4 +655,357 @@ model Don {
   camp Camp @relation(fields: [campId], references: [id], onDelete: Cascade)
 
   @@map("dons")
+}
+
+
+// ─────────────────────────────────────────
+//  ÉCOLE MATERNELLE
+// ─────────────────────────────────────────
+
+model Eleve {
+  id              String    @id @default(uuid())
+  campId          String    @map("camp_id")
+  classeId        String?   @map("classe_id")
+  nom             String
+  prenom          String
+  sexe            String?
+  dateNaissance   DateTime? @map("date_naissance")
+  lieuNaissance   String?   @map("lieu_naissance")
+  parentNom       String?   @map("parent_nom")
+  parentPrenom    String?   @map("parent_prenom")
+  parentTelephone String?   @map("parent_telephone")
+  adresse         String?
+  infosMedicales  String?   @map("infos_medicales")
+  groupeSanguin   String?   @map("groupe_sanguin")
+  allergies       String?
+  medicaments     String?
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  camp        Camp              @relation(fields: [campId], references: [id], onDelete: Cascade)
+  paiements   PaiementEleve[]
+  documents   DocumentEleve[]
+  sorties     SortieEleve[]
+  messages    MessageEcole[]
+  classe      Classe?           @relation(fields: [classeId], references: [id], onDelete: SetNull)
+  groupes     EleveGroupe[]
+  evaluations EvaluationEleve[]
+  presences   PresenceEleve[]
+
+  @@index([campId])
+  @@map("eleves")
+}
+
+model Classe {
+  id     String @id @default(uuid())
+  campId String @map("camp_id")
+  nom    String
+  niveau String?
+
+  camp        Camp            @relation(fields: [campId], references: [id], onDelete: Cascade)
+  eleves      Eleve[]
+  enseignants Enseignant[]
+  activites   ActiviteEcole[]
+  lecons      LeconEcole[]
+
+  @@index([campId])
+  @@map("classes")
+}
+
+model GroupeEcole {
+  id          String  @id @default(uuid())
+  campId      String  @map("camp_id")
+  nom         String
+  couleur     String  @default("#6366f1")
+  description String?
+
+  camp      Camp             @relation(fields: [campId], references: [id], onDelete: Cascade)
+  eleves    EleveGroupe[]
+  causeries CauserieEcole[]
+
+  @@index([campId])
+  @@map("groupes_ecole")
+}
+
+model EleveGroupe {
+  eleveId  String @map("eleve_id")
+  groupeId String @map("groupe_id")
+
+  eleve  Eleve       @relation(fields: [eleveId], references: [id], onDelete: Cascade)
+  groupe GroupeEcole @relation(fields: [groupeId], references: [id], onDelete: Cascade)
+
+  @@id([eleveId, groupeId])
+  @@map("eleve_groupes")
+}
+
+model Competence {
+  id     String @id @default(uuid())
+  campId String @map("camp_id")
+  nom    String
+  ordre  Int    @default(0)
+
+  camp        Camp              @relation(fields: [campId], references: [id], onDelete: Cascade)
+  evaluations EvaluationEleve[]
+
+  @@index([campId])
+  @@map("competences")
+}
+
+model EvaluationEleve {
+  id           String      @id @default(uuid())
+  eleveId      String      @map("eleve_id")
+  competenceId String      @map("competence_id")
+  periode      String
+  couleur      CouleurEval
+  commentaire  String?
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  eleve      Eleve      @relation(fields: [eleveId], references: [id], onDelete: Cascade)
+  competence Competence @relation(fields: [competenceId], references: [id], onDelete: Cascade)
+
+  @@unique([eleveId, competenceId, periode])
+  @@map("evaluations_eleves")
+}
+
+model ProgrammeEcole {
+  id        String        @id @default(uuid())
+  campId    String        @map("camp_id")
+  type      TypeProgramme
+  titre     String
+  contenu   String        @db.Text
+  date      DateTime      @db.Date
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  camp Camp @relation(fields: [campId], references: [id], onDelete: Cascade)
+
+  @@index([campId])
+  @@map("programmes_ecole")
+}
+
+model PresenceEleve {
+  id      String   @id @default(uuid())
+  eleveId String   @map("eleve_id")
+  date    DateTime @db.Date
+  present Boolean  @default(true)
+
+  eleve Eleve @relation(fields: [eleveId], references: [id], onDelete: Cascade)
+
+  @@unique([eleveId, date])
+  @@map("presences_eleves")
+}
+
+
+// ─────────────────────────────────────────
+//  ÉCOLE — modules propres (personnel, finances, registres…)
+// ─────────────────────────────────────────
+
+model Enseignant {
+  id          String    @id @default(uuid())
+  campId      String    @map("camp_id")
+  classeId    String?   @map("classe_id")
+  nom         String
+  prenom      String
+  telephone   String?
+  email       String?
+  specialite  String?
+  statut      String    @default("ACTIF")
+  dateArrivee DateTime? @map("date_arrivee")
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  camp      Camp            @relation(fields: [campId], references: [id], onDelete: Cascade)
+  classe    Classe?         @relation(fields: [classeId], references: [id], onDelete: SetNull)
+  activites ActiviteEcole[]
+  lecons    LeconEcole[]
+
+  @@index([campId])
+  @@map("enseignants")
+}
+
+model ActiviteEcole {
+  id           String   @id @default(uuid())
+  campId       String   @map("camp_id")
+  classeId     String?  @map("classe_id")
+  enseignantId String?  @map("enseignant_id")
+  titre        String
+  description  String?
+  lieu         String?
+  debut        DateTime
+  fin          DateTime
+  couleur      String   @default("#0ea5e9")
+
+  camp       Camp        @relation(fields: [campId], references: [id], onDelete: Cascade)
+  classe     Classe?     @relation(fields: [classeId], references: [id], onDelete: SetNull)
+  enseignant Enseignant? @relation(fields: [enseignantId], references: [id], onDelete: SetNull)
+
+  @@index([campId])
+  @@map("activites_ecole")
+}
+
+model PaiementEleve {
+  id           String   @id @default(uuid())
+  eleveId      String   @map("eleve_id")
+  libelle      String
+  montant      Decimal  @db.Decimal(12, 2)
+  methode      String   @default("ESPECES")
+  datePaiement DateTime @default(now()) @map("date_paiement")
+  reference    String?
+  notes        String?
+
+  eleve Eleve @relation(fields: [eleveId], references: [id], onDelete: Cascade)
+
+  @@index([eleveId])
+  @@map("paiements_eleves")
+}
+
+model DepenseEcole {
+  id          String   @id @default(uuid())
+  campId      String   @map("camp_id")
+  libelle     String
+  categorie   String
+  montant     Decimal  @db.Decimal(12, 2)
+  dateDepense DateTime @default(now()) @map("date_depense")
+  notes       String?
+
+  camp Camp @relation(fields: [campId], references: [id], onDelete: Cascade)
+
+  @@index([campId])
+  @@map("depenses_ecole")
+}
+
+model DocumentEleve {
+  id        String   @id @default(uuid())
+  eleveId   String   @map("eleve_id")
+  nom       String
+  type      String
+  statut    String   @default("EN_ATTENTE")
+  url       String?
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  eleve Eleve @relation(fields: [eleveId], references: [id], onDelete: Cascade)
+
+  @@index([eleveId])
+  @@map("documents_eleves")
+}
+
+model MessageEcole {
+  id        String   @id @default(uuid())
+  campId    String   @map("camp_id")
+  eleveId   String?  @map("eleve_id")
+  auteurId  String?  @map("auteur_id")
+  sujet     String
+  contenu   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  camp  Camp   @relation(fields: [campId], references: [id], onDelete: Cascade)
+  eleve Eleve? @relation(fields: [eleveId], references: [id], onDelete: SetNull)
+
+  @@index([campId])
+  @@map("messages_ecole")
+}
+
+model SortieEleve {
+  id          String    @id @default(uuid())
+  campId      String    @map("camp_id")
+  eleveId     String?   @map("eleve_id")
+  nom         String
+  prenom      String
+  heureSortie DateTime  @map("heure_sortie")
+  motif       String
+  personne    String?
+  heureRetour DateTime? @map("heure_retour")
+  notes       String?
+
+  camp  Camp   @relation(fields: [campId], references: [id], onDelete: Cascade)
+  eleve Eleve? @relation(fields: [eleveId], references: [id], onDelete: SetNull)
+
+  @@index([campId])
+  @@map("sorties_eleves")
+}
+
+model VisiteurEcole {
+  id           String   @id @default(uuid())
+  campId       String   @map("camp_id")
+  nom          String
+  prenom       String
+  telephone    String
+  motif        String
+  heureArrivee String?  @map("heure_arrivee")
+  heureDepart  String?  @map("heure_depart")
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  camp Camp @relation(fields: [campId], references: [id], onDelete: Cascade)
+
+  @@index([campId])
+  @@map("visiteurs_ecole")
+}
+
+model DonEcole {
+  id          String   @id @default(uuid())
+  campId      String   @map("camp_id")
+  nom         String
+  prenom      String
+  telephone   String?
+  description String
+  montant     Decimal? @db.Decimal(12, 2)
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  camp Camp @relation(fields: [campId], references: [id], onDelete: Cascade)
+
+  @@index([campId])
+  @@map("dons_ecole")
+}
+
+model RapportJour {
+  id           String   @id @default(uuid())
+  campId       String   @map("camp_id")
+  date         DateTime @db.Date
+  resume       String?  @db.Text
+  incidents    String?  @db.Text
+  observations String?  @db.Text
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  camp Camp @relation(fields: [campId], references: [id], onDelete: Cascade)
+
+  @@unique([campId, date])
+  @@map("rapports_jour")
+}
+
+model LeconEcole {
+  id           String   @id @default(uuid())
+  campId       String   @map("camp_id")
+  classeId     String?  @map("classe_id")
+  enseignantId String?  @map("enseignant_id")
+  date         DateTime @db.Date
+  matiere      String?
+  theme        String
+  contenu      String   @db.Text
+  notes        String?
+
+  camp       Camp        @relation(fields: [campId], references: [id], onDelete: Cascade)
+  classe     Classe?     @relation(fields: [classeId], references: [id], onDelete: SetNull)
+  enseignant Enseignant? @relation(fields: [enseignantId], references: [id], onDelete: SetNull)
+
+  @@index([campId])
+  @@map("lecons_ecole")
+}
+
+model CauserieEcole {
+  id       String   @id @default(uuid())
+  campId   String   @map("camp_id")
+  groupeId String   @map("groupe_id")
+  date     DateTime @db.Date
+  theme    String
+  resume   String?  @db.Text
+  notes    String?
+
+  camp   Camp        @relation(fields: [campId], references: [id], onDelete: Cascade)
+  groupe GroupeEcole @relation(fields: [groupeId], references: [id], onDelete: Cascade)
+
+  @@unique([groupeId, date])
+  @@index([campId])
+  @@map("causeries_ecole")
 }

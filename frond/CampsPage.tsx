@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { Tent, Plus, Search, Users, Calendar, MapPin, ArrowRight } from 'lucide-react'
 import api from './http'
 import type { Camp, StatutCamp } from './index'
+import { useAuthStore } from './auth.store'
+import { PermissionsPicker, ChampsPicker, CHAMPS_ELEVE_DEFAUT, labelsFor } from './ModulePages'
 import { formatDate, formatCFA, statutCampBadge, statutCampLabel } from './helpers'
 
 const STATUTS: { value: string; label: string }[] = [
@@ -68,7 +70,52 @@ function CampCard({ camp }: { camp: Camp }) {
   )
 }
 
+function AdminPanel({ camp, onSaved }: { camp: Camp; onSaved: () => void }) {
+  const admin = (camp as Camp & { users?: { email: string; actif: boolean; permissions: string[] }[] }).users?.[0]
+  const [open, setOpen] = useState(false)
+  // Écarte les autorisations obsolètes (ex. modules du camp sur une école)
+  const valid = Object.keys(labelsFor((camp as Camp & { type?: string }).type))
+  const [perms, setPerms] = useState<string[]>((admin?.permissions ?? []).filter(p => valid.includes(p)))
+  const [actif, setActif] = useState(admin?.actif ?? true)
+  const [pwd, setPwd] = useState('')
+  const [err, setErr] = useState('')
+  const isEcole = (camp as Camp & { type?: string }).type === 'ECOLE'
+  const [champs, setChamps] = useState<string[]>((camp as Camp & { champsEleve?: string[] }).champsEleve ?? CHAMPS_ELEVE_DEFAUT)
+  if (!admin) return <p className="text-xs text-ink-3">Aucun administrateur</p>
+
+  const save = async () => {
+    setErr('')
+    try {
+      await api.put(`/camps/${camp.id}/admin`, { permissions: perms, actif, ...(pwd ? { motDePasse: pwd } : {}) })
+      if (isEcole) await api.put(`/camps/${camp.id}/config`, { champsEleve: champs })
+      setOpen(false); setPwd(''); onSaved()
+    } catch (e) { setErr((e as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Échec de la mise à jour') }
+  }
+
+  return (
+    <div className="card space-y-3 -mt-2 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="text-ink-2">{(camp as Camp & { type?: string }).type === 'ECOLE' ? '🏫 ' : '⛺ '}Admin : <b>{admin.email}</b>{!admin.actif && ' (désactivé)'}</span>
+        <button className="text-sage" onClick={() => setOpen(!open)}>{open ? 'Fermer' : 'Autorisations'}</button>
+      </div>
+      {open && (
+        <div className="space-y-3">
+          {isEcole && <><p className="font-medium text-ink-2">Champs de la fiche élève</p><ChampsPicker value={champs} onChange={setChamps} /></>}
+          <p className="font-medium text-ink-2">Autorisations</p>
+          <PermissionsPicker type={(camp as Camp & { type?: string }).type} value={perms} onChange={setPerms} />
+          <label className="flex items-center gap-2"><input type="checkbox" checked={actif} onChange={e => setActif(e.target.checked)} /> Compte actif</label>
+          <input type="password" className="input-field" placeholder="Nouveau mot de passe (optionnel)" value={pwd} onChange={e => setPwd(e.target.value)} />
+          {err && <p className="text-ember">{err}</p>}
+          <button className="btn-primary" onClick={save}>Enregistrer</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function CampsPage() {
+  const isSuper = useAuthStore(s => s.user?.role === 'SUPER_ADMIN')
+  const [reload, setReload] = useState(0)
   const [camps, setCamps]     = useState<Camp[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch]   = useState('')
@@ -90,7 +137,7 @@ export default function CampsPage() {
     }
     const t = setTimeout(load, 300)
     return () => clearTimeout(t)
-  }, [search, statut])
+  }, [search, statut, reload])
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -100,10 +147,12 @@ export default function CampsPage() {
           <h1 className="font-display font-700 text-2xl text-ink">Camps</h1>
           <p className="text-ink-3 text-sm mt-0.5">{total} camp{total > 1 ? 's' : ''} au total</p>
         </div>
-        <Link to="/camps/nouveau" className="btn-primary flex items-center gap-2">
-          <Plus size={16} />
-          Nouveau camp
-        </Link>
+        {isSuper && (
+          <Link to="/camps/nouveau" className="btn-primary flex items-center gap-2">
+            <Plus size={16} />
+            Nouveau camp
+          </Link>
+        )}
       </div>
 
       {/* Filters */}
@@ -145,15 +194,18 @@ export default function CampsPage() {
           <Tent size={40} className="mx-auto mb-4 text-ink-3 opacity-40" />
           <p className="text-ink-2 font-medium">Aucun camp trouvé</p>
           <p className="text-ink-3 text-sm mt-1">Essayez un autre filtre ou créez un nouveau camp.</p>
-          <Link to="/camps/nouveau" className="btn-primary inline-flex items-center gap-2 mt-5">
-            <Plus size={15} />Créer un camp
-          </Link>
+          {isSuper && (
+            <Link to="/camps/nouveau" className="btn-primary inline-flex items-center gap-2 mt-5">
+              <Plus size={15} />Créer un camp
+            </Link>
+          )}
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {camps.map((camp, i) => (
             <div key={camp.id} style={{ animationDelay: `${i * 50}ms` }} className="animate-fade-up">
               <CampCard camp={camp} />
+              {isSuper && <AdminPanel camp={camp} onSaved={() => setReload(r => r + 1)} />}
             </div>
           ))}
         </div>

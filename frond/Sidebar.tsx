@@ -11,27 +11,51 @@ import { initials } from './helpers'
 const navItems = [
   { to: '/',             icon: LayoutDashboard, label: 'Tableau de bord' },
   { to: '/camps',        icon: Tent,            label: 'Camps' },
-  { to: '/groupes',      icon: Users,           label: 'Groupes' },
-  { to: '/animateurs',   icon: UserRound,       label: 'Animateurs' },
-  { to: '/participants', icon: Users,           label: 'Participants' },
-  { to: '/medical',      icon: HeartPulse,      label: 'Médical' },
-  { to: '/planning',     icon: Calendar,        label: 'Planning' },
-  { to: '/paiements',    icon: CreditCard,      label: 'Caisse' },
-  { to: '/documents',    icon: FileText,        label: 'Documents' },
-  { to: '/messages',     icon: MessageSquare,   label: 'Messages' },
-  { to: '/statistiques', icon: BarChart3,       label: 'Statistiques' },
-  { to: '/presence',    icon: ClipboardList,   label: 'Présence / Sorties' },
-  { to: '/visiteurs',   icon: UserCheck,       label: 'Visiteurs' },
-  { to: '/dons',        icon: Gift,            label: 'Dons' },
-  { to: '/rapport',        icon: BookOpen,      label: 'Rapport journalier' },
-  { to: '/enseignements',  icon: NotebookPen,   label: 'Enseignements' },
-  { to: '/causeries',      icon: MessageSquare, label: 'Causeries groupes' },
+  { to: '/groupes',      perm: 'groupes', icon: Users,           label: 'Groupes' },
+  { to: '/animateurs',   perm: 'animateurs', icon: UserRound,       label: 'Animateurs' },
+  { to: '/participants', perm: 'participants', icon: Users,           label: 'Participants' },
+  { to: '/medical',      perm: 'medical', icon: HeartPulse,      label: 'Médical' },
+  { to: '/planning',     perm: 'planning', icon: Calendar,        label: 'Planning' },
+  { to: '/paiements',    perm: 'caisse', icon: CreditCard,      label: 'Caisse' },
+  { to: '/documents',    perm: 'documents', icon: FileText,        label: 'Documents' },
+  { to: '/messages',     perm: 'messages', icon: MessageSquare,   label: 'Messages' },
+  { to: '/statistiques', perm: 'statistiques', icon: BarChart3,       label: 'Statistiques' },
+  { to: '/presence',    perm: 'presence', icon: ClipboardList,   label: 'Présence / Sorties' },
+  { to: '/visiteurs',   perm: 'visiteurs', icon: UserCheck,       label: 'Visiteurs' },
+  { to: '/dons',        perm: 'dons', icon: Gift,            label: 'Dons' },
+  { to: '/rapport',        perm: 'rapport', icon: BookOpen,      label: 'Rapport journalier' },
+  { to: '/enseignements',  perm: 'enseignements', icon: NotebookPen,   label: 'Enseignements' },
+  { to: '/causeries',      perm: 'causeries', icon: MessageSquare, label: 'Causeries groupes' },
+]
+
+const ecoleNavItems = [
+  { to: '/',                  icon: LayoutDashboard, label: 'Ma classe' },
+  { to: '/eleves',            perm: 'eleves',             icon: Users,         label: 'Élèves' },
+  { to: '/ecole/sante',       perm: 'sante_ecole',        icon: HeartPulse,    label: 'Médical' },
+  { to: '/groupes-eleves',    perm: 'groupes_ecole',      icon: UserCheck,     label: 'Groupes' },
+  { to: '/classes',           perm: 'classes',            icon: Tent,          label: 'Classes' },
+  { to: '/ecole/enseignants', perm: 'enseignants',        icon: UserRound,     label: 'Enseignants' },
+  { to: '/ecole/emploi',      perm: 'emploi_temps',       icon: Calendar,      label: 'Emploi du temps' },
+  { to: '/ecole/frais',       perm: 'frais',              icon: CreditCard,    label: 'Frais de scolarité' },
+  { to: '/ecole/documents',   perm: 'documents_eleves',   icon: FileText,      label: 'Documents' },
+  { to: '/ecole/messages',    perm: 'messages_ecole',     icon: MessageSquare, label: 'Messages' },
+  { to: '/ecole/statistiques', perm: 'statistiques_ecole', icon: BarChart3,    label: 'Statistiques' },
+  { to: '/ecole/sorties',     perm: 'sorties_eleves',     icon: ClipboardList, label: 'Sorties des élèves' },
+  { to: '/ecole/visiteurs',   perm: 'visiteurs_ecole',    icon: UserCheck,     label: 'Visiteurs' },
+  { to: '/ecole/dons',        perm: 'dons_ecole',         icon: Gift,          label: 'Dons' },
+  { to: '/ecole/rapport',     perm: 'rapport_ecole',      icon: BookOpen,      label: 'Rapport journalier' },
+  { to: '/ecole/lecons',      perm: 'lecons',             icon: NotebookPen,   label: 'Leçons' },
+  { to: '/ecole/causeries',   perm: 'causeries_ecole',    icon: MessageSquare, label: 'Causeries des groupes' },
+  { to: '/evaluations',       perm: 'evaluations',        icon: BarChart3,     label: 'Évaluations' },
+  { to: '/programme',         perm: 'programme_ecole',    icon: BookOpen,      label: 'Programme' },
+  { to: '/appel',             perm: 'presences_eleves',   icon: ClipboardList, label: 'Appel des élèves' },
 ]
 
 export default function Sidebar() {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  const items: { to: string; perm?: string; icon: typeof Tent; label: string }[] = user?.campType === 'ECOLE' ? ecoleNavItems : navItems
 
   const handleLogout = () => { logout(); navigate('/login') }
 
@@ -52,7 +76,7 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
-        {navItems.map(({ to, icon: Icon, label }) => (
+        {items.filter(i => !i.perm || user?.role === 'SUPER_ADMIN' || user?.permissions?.includes(i.perm)).map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}

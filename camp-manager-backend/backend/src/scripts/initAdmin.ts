@@ -8,17 +8,24 @@ export async function initAdmin() {
     const count = await prisma.user.count()
     if (count > 0) return
 
-    const hash = await bcrypt.hash('Admin1234!', 12)
+    const email = process.env.ADMIN_EMAIL
+    const password = process.env.ADMIN_PASSWORD
+    if (!email || !password) {
+      console.warn('⚠️  Aucun utilisateur en base : définissez ADMIN_EMAIL et ADMIN_PASSWORD pour créer le premier admin.')
+      return
+    }
+
+    const hash = await bcrypt.hash(password, 12)
     await prisma.user.create({
       data: {
         nom: 'Système',
         prenom: 'Admin',
-        email: 'admin@camp.cm',
+        email,
         motDePasseHash: hash,
         role: Role.SUPER_ADMIN,
       },
     })
-    console.log('✅ Compte admin créé : admin@camp.cm / Admin1234!')
+    console.log(`✅ Compte admin créé : ${email}`)
   } catch (e) {
     console.error('initAdmin error:', e)
   } finally {

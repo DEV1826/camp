@@ -3,6 +3,24 @@ import prisma from '../config/prisma'
 import { sendSuccess, sendCreated } from '../utils/response'
 import { AppError } from '../middlewares/error.middleware'
 import { AuthRequest } from '../types'
+import bcrypt from 'bcryptjs'
+import { modulesFor, CHAMPS_ELEVE } from '../middlewares/tenant.middleware'
+
+const ADMIN_SELECT = { id: true, nom: true, prenom: true, email: true, actif: true, permissions: true } as const
+
+const parsePermissions = (value: unknown, type: 'CAMP' | 'ECOLE'): string[] => {
+  if (!Array.isArray(value)) throw new AppError('permissions doit être une liste', 400)
+  const invalid = value.filter(p => !modulesFor(type).includes(p))
+  if (invalid.length) throw new AppError(`Permissions inconnues : ${invalid.join(', ')}`, 400)
+  return Array.from(new Set(value as string[]))
+}
+
+const parseChamps = (value: unknown): string[] => {
+  if (!Array.isArray(value)) throw new AppError('champsEleve doit être une liste', 400)
+  const invalid = value.filter(c => !(CHAMPS_ELEVE as readonly string[]).includes(c))
+  if (invalid.length) throw new AppError(`Champs inconnus : ${invalid.join(', ')}`, 400)
+  return Array.from(new Set(value as string[]))
+}
 
 // ─── GET /camps ──────────────────────────────────────────────
 export const getCamps = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -11,6 +29,12 @@ export const getCamps = async (req: AuthRequest, res: Response, next: NextFuncti
 
     const skip = (Number(page) - 1) * Number(perPage)
     const where: any = {}
+
+    // Un admin de camp ne voit que son propre camp
+    if (req.user!.role !== 'SUPER_ADMIN') {
+      const me = await prisma.user.findUnique({ where: { id: req.user!.userId }, select: { campId: true } })
+      where.id = me?.campId ?? '__none__'
+    }
 
     if (search) {
       where.OR = [
@@ -28,6 +52,7 @@ export const getCamps = async (req: AuthRequest, res: Response, next: NextFuncti
         orderBy: { dateDebut: 'desc' },
         include: {
           _count: { select: { participants: true, animateurs: true, activites: true } },
+          users: { where: { role: 'ADMIN' }, select: ADMIN_SELECT },
         },
       }),
       prisma.camp.count({ where }),
@@ -66,17 +91,39 @@ export const getCampById = async (req: AuthRequest, res: Response, next: NextFun
 // ─── POST /camps ─────────────────────────────────────────────
 export const createCamp = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { nom, description, lieu, adresse, dateDebut, dateFin, capaciteMax, prixBase } = req.body
+    const { nom, description, lieu, adresse, dateDebut, dateFin, capaciteMax, prixBase, admin } = req.body
+    const type: 'CAMP' | 'ECOLE' = req.body.type === 'ECOLE' ? 'ECOLE' : 'CAMP'
 
     if (new Date(dateDebut) >= new Date(dateFin)) {
       throw new AppError('La date de début doit être avant la date de fin', 400)
     }
+    if (!admin || !admin.nom || !admin.prenom || !admin.email || typeof admin.motDePasse !== 'string' || admin.motDePasse.length < 8) {
+      throw new AppError('Un administrateur (nom, prénom, email, mot de passe de 8 caractères min.) est requis', 400)
+    }
+    const permissions = parsePermissions(admin.permissions ?? [], type)
+    if (await prisma.user.findUnique({ where: { email: admin.email } })) {
+      throw new AppError('Cet email est déjà utilisé', 409)
+    }
+    const hash = await bcrypt.hash(admin.motDePasse, 12)
 
+    // Camp + administrateur créés ensemble
     const camp = await prisma.camp.create({
-      data: { nom, description, lieu, adresse, dateDebut: new Date(dateDebut), dateFin: new Date(dateFin), capaciteMax: Number(capaciteMax), prixBase: prixBase || 0 },
+      data: {
+        nom, description, lieu, adresse, type,
+        ...(type === 'ECOLE' && req.body.champsEleve !== undefined && { champsEleve: parseChamps(req.body.champsEleve) }),
+        dateDebut: new Date(dateDebut), dateFin: new Date(dateFin),
+        capaciteMax: Number(capaciteMax), prixBase: prixBase || 0,
+        users: {
+          create: {
+            nom: admin.nom, prenom: admin.prenom, email: admin.email,
+            motDePasseHash: hash, role: 'ADMIN', permissions,
+          },
+        },
+      },
+      include: { users: { select: ADMIN_SELECT } },
     })
 
-    sendCreated(res, camp, 'Camp créé avec succès')
+    sendCreated(res, camp, 'Camp et administrateur créés avec succès')
   } catch (err) {
     next(err)
   }
@@ -88,10 +135,12 @@ export const updateCamp = async (req: AuthRequest, res: Response, next: NextFunc
     const camp = await prisma.camp.findUnique({ where: { id: req.params.id } })
     if (!camp) throw new AppError('Camp introuvable', 404)
 
+    // Le type d'espace et l'identifiant ne sont pas modifiables
+    const { id: _id, type: _type, users: _users, champsEleve: _champs, ...fields } = req.body
     const updated = await prisma.camp.update({
       where: { id: req.params.id },
       data: {
-        ...req.body,
+        ...fields,
         dateDebut: req.body.dateDebut ? new Date(req.body.dateDebut) : undefined,
         dateFin: req.body.dateFin ? new Date(req.body.dateFin) : undefined,
       },
@@ -101,6 +150,46 @@ export const updateCamp = async (req: AuthRequest, res: Response, next: NextFunc
   } catch (err) {
     next(err)
   }
+}
+
+// ─── PUT /camps/:id/admin ────────────────────────────────────
+// Super admin : modifie permissions / statut / mot de passe de l'admin du camp
+export const updateCampAdmin = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const admin = await prisma.user.findFirst({ where: { campId: req.params.id, role: 'ADMIN' } })
+    if (!admin) throw new AppError('Administrateur du camp introuvable', 404)
+
+    const { permissions, actif, motDePasse } = req.body
+    const data: Record<string, unknown> = {}
+    if (permissions !== undefined) {
+      const camp = await prisma.camp.findUnique({ where: { id: req.params.id }, select: { type: true } })
+      data.permissions = parsePermissions(permissions, camp?.type ?? 'CAMP')
+    }
+    if (actif !== undefined) data.actif = Boolean(actif)
+    if (motDePasse !== undefined) {
+      if (typeof motDePasse !== 'string' || motDePasse.length < 8) throw new AppError('Mot de passe : 8 caractères min.', 400)
+      data.motDePasseHash = await bcrypt.hash(motDePasse, 12)
+    }
+
+    const updated = await prisma.user.update({ where: { id: admin.id }, data, select: ADMIN_SELECT })
+    sendSuccess(res, updated, 'Administrateur mis à jour')
+  } catch (err) { next(err) }
+}
+
+// ─── PUT /camps/:id/config ───────────────────────────────────
+// Super admin : choisit les champs de la fiche élève d'une école
+export const updateCampConfig = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const camp = await prisma.camp.findUnique({ where: { id: req.params.id }, select: { type: true } })
+    if (!camp) throw new AppError('Espace introuvable', 404)
+    if (camp.type !== 'ECOLE') throw new AppError('Configuration réservée aux écoles', 400)
+    const updated = await prisma.camp.update({
+      where: { id: req.params.id },
+      data: { champsEleve: parseChamps(req.body.champsEleve) },
+      select: { id: true, champsEleve: true },
+    })
+    sendSuccess(res, updated, 'Champs mis à jour')
+  } catch (err) { next(err) }
 }
 
 // ─── DELETE /camps/:id ───────────────────────────────────────

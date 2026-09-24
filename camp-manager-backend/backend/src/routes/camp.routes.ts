@@ -1,17 +1,19 @@
 import { Router } from 'express'
 import * as camp from '../controllers/camp.controller'
 import * as participant from '../controllers/participant.controller'
-import { authenticate, adminOnly, staffOnly } from '../middlewares/auth.middleware'
+import { authenticate, adminOnly, staffOnly, authorize } from '../middlewares/auth.middleware'
 
 const router = Router()
 
 router.use(authenticate)
 
 router.get('/', camp.getCamps)
-router.post('/', adminOnly, camp.createCamp)
+router.post('/', authorize('SUPER_ADMIN'), camp.createCamp)
 router.get('/:id', camp.getCampById)
 router.put('/:id', adminOnly, camp.updateCamp)
-router.delete('/:id', adminOnly, camp.deleteCamp)
+router.delete('/:id', authorize('SUPER_ADMIN'), camp.deleteCamp)
+router.put('/:id/config', authorize('SUPER_ADMIN'), camp.updateCampConfig)
+router.put('/:id/admin', authorize('SUPER_ADMIN'), camp.updateCampAdmin)
 router.get('/:id/stats', staffOnly, camp.getCampStats)
 
 // Participants imbriqués sous /camps/:campId/participants

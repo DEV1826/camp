@@ -16,6 +16,7 @@ import paiementRoutes from './routes/paiement.routes'
 import documentRoutes from './routes/document.routes'
 import messageRoutes from './routes/message.routes'
 import depenseRoutes from './routes/depense.routes'
+import { tenantGuard } from './middlewares/tenant.middleware'
 import { errorHandler, notFound } from './middlewares/error.middleware'
 
 
@@ -26,6 +27,8 @@ import visiteurRoutes from './routes/visiteur.routes'
 import donRoutes from './routes/don.routes'
 import articleSacRoutes from './routes/articleSac.routes'
 import enseignementRoutes from './routes/enseignement.routes'
+import ecoleRoutes from './routes/ecole.routes'
+import ecoleModulesRoutes from './routes/ecoleModules.routes'
 import causerieRoutes from './routes/causerie.routes'
 
 const app = express()
@@ -74,6 +77,7 @@ app.get('/health', (_req, res) => {
 })
 
 // ─── Routes API ──────────────────────────────────────────────
+app.use('/api', tenantGuard) // isolation par camp + permissions par module
 app.use('/api/auth',         authRoutes)
 app.use('/api/camps',        campRoutes)
 app.use('/api/participants', participantRoutes)
@@ -91,6 +95,9 @@ app.use('/api/participants/:participantId/articles-sac', articleSacRoutes)
 app.use('/api/camps/:campId/enseignements', enseignementRoutes)
 app.use('/api/enseignements', enseignementRoutes)
 app.use('/api/camps/:campId/causeries', causerieRoutes)
+
+app.use('/api/ecole', ecoleModulesRoutes)
+app.use('/api', ecoleRoutes)
 
 // ─── 404 API ─────────────────────────────────────────────────
 app.use('/api', notFound)

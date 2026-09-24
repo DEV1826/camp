@@ -43,6 +43,7 @@ function StatCard({ icon: Icon, label, value, sub, color = 'sage' }: {
 
 export default function DashboardPage() {
   const { user } = useAuthStore()
+  const isSuper = user?.role === "SUPER_ADMIN"
   const [camps, setCamps] = useState<Camp[]>([])
   const [stats, setStats] = useState<CampStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -232,7 +233,7 @@ export default function DashboardPage() {
           { to: '/camps/nouveau', label: 'Créer un camp',    desc: 'Configurer une nouvelle session', icon: Tent,     color: 'sage' },
           { to: '/participants',  label: 'Inscrire un ado',  desc: 'Nouvelle inscription',            icon: Users,    color: 'sky' },
           { to: '/planning',      label: 'Ajouter activité', desc: 'Planifier au programme',          icon: Clock,    color: 'gold' },
-        ].map(({ to, label, desc, icon: Icon, color }) => (
+        ].filter(a => a.to !== '/camps/nouveau' || isSuper).map(({ to, label, desc, icon: Icon, color }) => (
           <Link key={to} to={to} className="card hover:border-border group transition-all duration-150 flex items-center gap-3 hover:shadow-md">
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0
               ${color === 'sage' ? 'bg-sage/10 text-sage' : color === 'sky' ? 'bg-sky/10 text-sky' : 'bg-gold/10 text-gold'}`}>
